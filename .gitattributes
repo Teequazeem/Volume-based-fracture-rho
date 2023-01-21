@@ -1,2 +1,55 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+import numpy as np
+import pandas as pd
+import h5py 
+
+
+class FractureDensity:
+    
+    """ This class created by Tolulope Agbaje on the 12th of December 2022 (A birthday gift for myself)
+    The FractureDensity class takes 2 positional arguments namely permeability_cell and full_mesh
+    which are the requisite data needed to extract volume-based fracture density
+    
+    
+    permeability_cell = Cell data containing information for upscaled km and kf. permeability_cell is in .hf file format with (n,1) shape
+    full_mesh = The full mesh data in .uge file format
+    
+    METHODS:
+    1. The extract_mesh_permeability function extracts the permeability data 
+    2. The frac_den function extracts the cell volume (last column) from the full_mesh.uge file & calculate the volume-based fracture density
+    
+    """
+    
+    def __init__(self, permeability_cell, full_mesh):
+        self.permeability_cell = permeability_cell
+        self.full_mesh = full_mesh
+
+    def extract_mesh_permeability(self):
+        hf = h5py.File(self.permeability_cell, 'r')
+        hf.keys()
+        perm = hf.get('Permeability')
+        perm_arr = np.array(perm)
+        self.perm_df = pd.DataFrame(perm_arr) #Included self to be able to call in ot
+        return self.perm_df
+
+    def frac_den(self):
+        import csv
+        rows = []
+        with open(self.full_mesh, 'r') as uge_file:
+            reader = csv.reader(uge_file)
+            for row in reader:
+                row_val = row[0].split(' ')
+                rows.append(float(row_val[-1]))
+        self.fmesh = rows[1:]
+        stop = int(rows[0])
+        self.fm = pd.DataFrame({'mesh':self.fmesh[:stop]})
+        perm = pd.concat([self.fm, self.perm_df], axis = 1)
+        perm.rename(columns={0:'permeability'}, inplace = True)
+        frac = perm.loc[perm['permeability'] != 1e-18]
+        frac_den = np.sum(np.array(frac['mesh']))/np.sum(np.array(perm['mesh']))
+
+        if len(self.fm) == len(self.perm_df):
+            print('Full mesh and permeability are of equal dimension')
+            return 'Fracture density:' + ' ' + str(frac_den), 'Full mesh size:' + ' ' + str(len(self.fm)), 'Permeability cell size:' + str(len(self.perm_df))
+        else:
+            print(f'Permeability size is {len(self.perm_df)} and full mesh size is {len(self.fm)}')
+            print('Therefore,full mesh and permeability are not of equal dimension...please recheck your entry')
